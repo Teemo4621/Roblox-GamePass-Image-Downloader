@@ -1,4 +1,5 @@
 import os
+import sys
 import requests
 from bs4 import BeautifulSoup
 import colorama
@@ -19,7 +20,13 @@ def get_gamepass_image_urls(game_id):
         
         for item in gamepass_data:
             if item["name"] not in ["[Removed Gamepass]", "Test"]:
-                data = [{"requestId": f"{item['id']}::Asset:150x150:png:regular", "type": "GamePass", "targetId": item['id'], "format": "png", "size": "150x150"}]
+                data = [{
+                    "requestId": f"{item['id']}::Asset:150x150:png:regular",
+                    "type": "GamePass",
+                    "targetId": item['id'],
+                    "format": "png",
+                    "size": "150x150"
+                }]
                 req_url = requests.post("https://thumbnails.roblox.com/v1/batch", json=data)
                 req_url.raise_for_status()
                 image_url = req_url.json()['data'][0]["imageUrl"]
@@ -35,8 +42,8 @@ def get_game_name(game_id):
         req = requests.get(f"https://www.roblox.com/games/{game_id}")
         req.raise_for_status()
         soup = BeautifulSoup(req.text, 'html.parser')
-        game_title = soup.select("#game-detail-page > div.col-xs-12.section-content.game-main-content.remove-panel.follow-button-enabled > div.game-calls-to-action > div.game-title-container > h1")[0].text
-        return game_title
+        game_title = soup.select_one("h1.game-name")
+        return game_title.text.strip() if game_title else f"Game_{game_id}"
     except requests.RequestException as e:
         print(f"{colorama.Fore.RED}[ERROR] {e}")
         return None
@@ -48,25 +55,29 @@ def download_gamepass_images(game_id, game_title):
         print(f"{colorama.Fore.YELLOW}[INFO] No GamePasses found for {game_title}.")
         return
     
-    directory_path = f"assets/{game_title.replace(' ', '')}"
+    directory_path = f"output/{game_title.replace(' ', '')}"
     os.makedirs(directory_path, exist_ok=True)
     
     for gamepass in all_gamepasses:
-        print(f"{colorama.Fore.WHITE}[ {colorama.Fore.LIGHTGREEN_EX}DOWNLOADING {colorama.Fore.WHITE}] {colorama.Fore.LIGHTYELLOW_EX}{gamepass['name']}.png")
+        filename = f"{gamepass['name']}.png".replace("/", "_")
+        print(f"{colorama.Fore.WHITE}[ {colorama.Fore.LIGHTGREEN_EX}DOWNLOADING {colorama.Fore.WHITE}] {colorama.Fore.LIGHTYELLOW_EX}{filename}")
         try:
             r = requests.get(gamepass["url"], allow_redirects=True)
             r.raise_for_status()
-            with open(f"{directory_path}/{gamepass['name']}.png", 'wb') as f:
+            with open(f"{directory_path}/{filename}", 'wb') as f:
                 f.write(r.content)
         except requests.RequestException as e:
             print(f"{colorama.Fore.RED}[ERROR] Failed to download {gamepass['name']}: {e}")
 
 def main():
+    if len(sys.argv) < 2:
+        print(f"{colorama.Fore.RED}[ERROR] Usage: python main.py <game_id>")
+        sys.exit(1)
     #support multigameIds Ex: GameId: 123123,645654
-    game_ids_input = input("Enter Game IDs (comma-separated): ")
-    game_ids = [game_id.strip() for game_id in game_ids_input.split(",")]
+    game_ids = sys.argv[1].split(",")
 
     for game_id in game_ids:
+        game_id = game_id.strip()
         if game_id.isnumeric():
             game_title = get_game_name(game_id)
             if game_title:
